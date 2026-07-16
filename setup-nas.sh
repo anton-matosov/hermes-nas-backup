@@ -52,11 +52,8 @@ SSH_PRIVATE_KEY_PATH="$secrets_dir/hermes_ed25519"
 SSH_KNOWN_HOSTS_PATH="$secrets_dir/known_hosts"
 RESTIC_PASSWORD_PATH="$secrets_dir/restic_password"
 
-sudo mkdir -p "$secrets_dir" "$RESTIC_REPOSITORY_PATH"
-sudo chown "$NAS_UID:$NAS_GID" "$secrets_dir" "$RESTIC_REPOSITORY_PATH"
-chmod 700 "$secrets_dir" "$RESTIC_REPOSITORY_PATH"
-
-cat > "$env_file" <<EOF
+env_tmp="$(mktemp "$project_dir/.env.XXXXXX")"
+cat > "$env_tmp" <<EOF
 NAS_UID=$NAS_UID
 NAS_GID=$NAS_GID
 
@@ -78,7 +75,13 @@ KEEP_DAILY=${KEEP_DAILY:-7}
 KEEP_WEEKLY=${KEEP_WEEKLY:-5}
 KEEP_MONTHLY=${KEEP_MONTHLY:-12}
 EOF
-chmod 600 "$env_file"
+chmod 600 "$env_tmp"
+mv "$env_tmp" "$env_file"
+printf 'Saved setup answers to %s\n' "$env_file"
+
+sudo mkdir -p "$secrets_dir" "$RESTIC_REPOSITORY_PATH"
+sudo chown "$NAS_UID:$NAS_GID" "$secrets_dir" "$RESTIC_REPOSITORY_PATH"
+chmod 700 "$secrets_dir" "$RESTIC_REPOSITORY_PATH"
 
 if [[ ! -f "$SSH_PRIVATE_KEY_PATH" ]]; then
   ssh-keygen -q -t ed25519 -f "$SSH_PRIVATE_KEY_PATH" -N '' -C synology-hermes-backup
