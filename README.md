@@ -13,6 +13,7 @@ read-only bind mounts and are not included in the image.
 
 - `Dockerfile` — Alpine, Restic, and OpenSSH client; runs as a non-root user.
 - `backup.sh` — backup/init/check/prune entrypoint.
+- `setup-nas.sh` — interactive, idempotent NAS bootstrap.
 - `docker-compose.yaml` — read-only container, tmpfs, dropped capabilities, and mounts.
 - `server/hermes-backup-stream` — forced command installed on Ubuntu.
 
@@ -35,80 +36,36 @@ from="NAS_IP",restrict,command="/home/anton/.local/bin/hermes-backup-stream" ssh
 
 This key cannot request a shell, PTY, forwarding, or any other command.
 
-## 2. Synology files and secrets
+## 2. Synology prerequisites and automated setup
 
-Copy this directory to, for example:
+Install **Container Manager** (called **Docker** on older DSM releases) and
+**Git Server** from Synology Package Center. Git Server supplies the command-line
+Git/OpenSSH tools used during setup. Enable SSH access, reconnect, and clone or
+copy this repository to, for example:
 
 ```text
 /volume1/docker/hermes-backup
 ```
 
-Create a secret directory and repository directory. Replace UID/GID with the
-account that owns the repository (`id YOUR_DSM_USER` over NAS SSH):
+Run the setup as the DSM account that will own the backup. It checks the
+packages, creates `.env`, directories, key and password, builds the image,
+records and verifies the SSH host key, and initializes Restic:
 
 ```bash
-mkdir -p /volume1/docker/hermes-backup/secrets
-mkdir -p /volume1/Backups/restic-hermes
-chown NAS_UID:NAS_GID /volume1/Backups/restic-hermes
-chmod 700 /volume1/docker/hermes-backup/secrets
-chmod 700 /volume1/Backups/restic-hermes
+cd /volume1/docker/hermes-backup
+./setup-nas.sh
 ```
 
-In the `chown` command, replace `NAS_UID:NAS_GID` with the numeric values that
-will also be placed in `.env` (for example, `1026:100`). Synology shared-folder
-ACLs must also grant that DSM account read, write, and directory traversal.
+The script prints the complete IP-restricted `authorized_keys` line and pauses
+while you install it on the Hermes server. It is safe to rerun: existing keys,
+passwords, and initialized Restic repositories are retained.
 
-Generate a dedicated SSH key on the NAS:
-
-```bash
-ssh-keygen -t ed25519 \
-  -f /volume1/docker/hermes-backup/secrets/hermes_ed25519 \
-  -N '' -C synology-hermes-backup
-chmod 600 /volume1/docker/hermes-backup/secrets/hermes_ed25519
-```
-
-Only the `.pub` file is copied to Ubuntu. The private key stays on the NAS.
-
-Create and separately preserve a strong Restic password:
-
-```bash
-umask 077
-openssl rand -base64 48 \
-  > /volume1/docker/hermes-backup/secrets/restic_password
-```
-
-Record the Ubuntu SSH host key. Do not blindly trust the result: compare its
-fingerprint with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` run directly
-on Ubuntu.
-
-```bash
-ssh-keyscan -H -t ed25519 HERMES_SERVER_IP \
-  > /volume1/docker/hermes-backup/secrets/known_hosts
-chmod 600 /volume1/docker/hermes-backup/secrets/known_hosts
-```
-
-Copy `.env.example` to `.env`, replace the IP and paths, and set `NAS_UID` and
-`NAS_GID` to the repository owner's numeric IDs:
-
-```bash
-cp .env.example .env
-chmod 600 .env
-```
-
-The mounted secret files must be readable by that UID. The container copies
-the SSH key into private tmpfs and forces mode `0600` before invoking OpenSSH.
-
-## 3. Build and initialize
-
-From the project directory on the NAS:
-
-```bash
-sudo /usr/local/bin/docker-compose build
-sudo MODE=init /usr/local/bin/docker-compose run --rm hermes-backup
-```
-
-Older DSM installations may use `docker-compose` instead of `/usr/local/bin/docker-compose`.
-Initialization is run only once.
+DSM does not ship `ssh-keyscan`. The setup script deliberately runs the version
+inside the built container, shows its fingerprint, and requires confirmation
+against the fingerprint displayed directly on the Hermes server. It never
+blindly accepts a network-provided host key. Only the public client key is
+copied to Ubuntu; the private key stays on the NAS. Preserve a separate offline
+copy of `secrets/restic_password`.
 
 If an older image reports `chdir to cwd ("/repository") ... permission denied`,
 rebuild it after this change. That failure occurs before the backup script can
@@ -121,11 +78,13 @@ grep '^NAS_\(UID\|GID\)=' .env
 sudo stat -c '%u:%g %a %n' /volume1/Backups/restic-hermes
 ```
 
-Test one real backup:
+## 3. Test
+
+All Compose commands use the Synology absolute path and `sudo`:
 
 ```bash
-/usr/local/bin/docker-compose run --rm hermes-backup
-MODE=snapshots /usr/local/bin/docker-compose run --rm hermes-backup
+sudo /usr/local/bin/docker-compose run --rm hermes-backup
+sudo MODE=snapshots /usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
 Restic's `--stdin-from-command` mode checks the SSH command's exit status. If
@@ -139,14 +98,7 @@ Compose path because Task Scheduler has a minimal working environment:
 
 ```bash
 cd /volume1/docker/hermes-backup && \
-  /usr/local/bin/docker-compose run --rm hermes-backup
-```
-
-If DSM exposes Compose as a separate executable, use:
-
-```bash
-cd /volume1/docker/hermes-backup && \
-  /usr/local/bin/docker-compose run --rm hermes-backup
+  sudo /usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
 The entrypoint uses an advisory lock in the repository and refuses overlapping
@@ -158,20 +110,20 @@ Create a weekly pruning task:
 
 ```bash
 cd /volume1/docker/hermes-backup && \
-  MODE=prune /usr/local/bin/docker-compose run --rm hermes-backup
+  sudo MODE=prune /usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
 Create a weekly 5% repository check:
 
 ```bash
 cd /volume1/docker/hermes-backup && \
-  MODE=check /usr/local/bin/docker-compose run --rm hermes-backup
+  sudo MODE=check /usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
 For an occasional complete data check, override the subset:
 
 ```bash
-MODE=check CHECK_READ_DATA_SUBSET=100% \
+sudo MODE=check CHECK_READ_DATA_SUBSET=100% \
   /usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
@@ -180,7 +132,7 @@ MODE=check CHECK_READ_DATA_SUBSET=100% \
 List snapshots:
 
 ```bash
-MODE=snapshots /usr/local/bin/docker-compose run --rm hermes-backup
+sudo MODE=snapshots /usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
 The container supports these modes through `MODE`:
