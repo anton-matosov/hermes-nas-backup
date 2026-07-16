@@ -16,7 +16,7 @@ cat > "$tmp/bin/ssh" <<'MOCK_SSH'
 if [[ "${MOCK_SSH_FAIL:-false}" == "true" ]]; then
   exit 42
 fi
-printf 'fake zip stream'
+printf 'fake tar stream'
 MOCK_SSH
 
 cat > "$tmp/bin/flock" <<'MOCK_FLOCK'
@@ -57,7 +57,8 @@ export FORGET_AFTER_BACKUP=true
 
 "$project_dir/backup.sh"
 grep -q '^backup .*--stdin-from-command' "$MOCK_RESTIC_LOG"
-grep -q '^forget .*--keep-daily 7 .*--keep-weekly 5 .*--keep-monthly 12' "$MOCK_RESTIC_LOG"
+grep -q -- '--stdin-filename hermes-and-mempalace.tar' "$MOCK_RESTIC_LOG"
+grep -q '^forget .*--group-by host,tags .*--keep-daily 7 .*--keep-weekly 5 .*--keep-monthly 12' "$MOCK_RESTIC_LOG"
 
 : > "$MOCK_RESTIC_LOG"
 export MOCK_SSH_FAIL=true

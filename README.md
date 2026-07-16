@@ -95,6 +95,10 @@ Restic's `--stdin-from-command` mode checks the SSH command's exit status. If
 SSH or the Ubuntu exporter fails, Restic cancels the backup and creates no
 snapshot.
 
+Every run stores the combined stream as `hermes-and-mempalace.tar`. The stable
+path lets Restic reuse the correct parent snapshot. Retention groups by host and
+tag, so it also covers older snapshots whose paths contained timestamps.
+
 Restic stages multiple approximately 16 MiB pack files in `/tmp` before saving
 them to the repository. The container therefore provides a 128 MiB tmpfs by
 default; `TMPFS_SIZE` in `.env` can raise it on larger repositories. Setting it
