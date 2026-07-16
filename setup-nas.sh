@@ -14,7 +14,7 @@ fail() {
 prompt() {
   local name="$1" message="$2" default="${3:-}" value
   if [[ -n "${!name:-}" ]]; then
-    return
+    default="${!name}"
   fi
   if [[ -n "$default" ]]; then
     read -r -p "$message [$default]: " value
@@ -62,6 +62,8 @@ NAS_GID=$NAS_GID
 
 HERMES_SSH_TARGET=$HERMES_SSH_TARGET
 SSH_PORT=$SSH_PORT
+NAS_SOURCE_IP=$NAS_SOURCE_IP
+HERMES_EXPORTER_PATH=$HERMES_EXPORTER_PATH
 RESTIC_HOST=${RESTIC_HOST:-hermes-server}
 RESTIC_TAG=${RESTIC_TAG:-hermes}
 

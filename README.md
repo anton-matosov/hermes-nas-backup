@@ -57,8 +57,9 @@ cd /volume1/docker/hermes-backup
 ```
 
 The script prints the complete IP-restricted `authorized_keys` line and pauses
-while you install it on the Hermes server. It is safe to rerun: existing keys,
-passwords, and initialized Restic repositories are retained.
+while you install it on the Hermes server. It is safe to rerun: saved `.env`
+answers are shown as prompt defaults, and existing keys, passwords, and
+initialized Restic repositories are retained.
 
 DSM does not ship `ssh-keyscan`. The setup script deliberately runs the version
 inside the built container, shows its fingerprint, and requires confirmation
