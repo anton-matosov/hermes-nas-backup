@@ -1,0 +1,44 @@
+services:
+  hermes-backup:
+    build:
+      context: .
+      args:
+        BACKUP_UID: ${NAS_UID:-1000}
+        BACKUP_GID: ${NAS_GID:-1000}
+    image: local/hermes-nas-backup:latest
+    environment:
+      HERMES_SSH_TARGET: ${HERMES_SSH_TARGET}
+      SSH_PORT: ${SSH_PORT:-22}
+      RESTIC_HOST: ${RESTIC_HOST:-hermes-server}
+      RESTIC_TAG: ${RESTIC_TAG:-hermes}
+      FORGET_AFTER_BACKUP: ${FORGET_AFTER_BACKUP:-true}
+      PRUNE_AFTER_BACKUP: ${PRUNE_AFTER_BACKUP:-false}
+      KEEP_DAILY: ${KEEP_DAILY:-7}
+      KEEP_WEEKLY: ${KEEP_WEEKLY:-5}
+      KEEP_MONTHLY: ${KEEP_MONTHLY:-12}
+      CHECK_READ_DATA_SUBSET: ${CHECK_READ_DATA_SUBSET:-5%}
+      MODE: ${MODE:-backup}
+    volumes:
+      - type: bind
+        source: ${RESTIC_REPOSITORY_PATH}
+        target: /repository
+      - type: bind
+        source: ${SSH_PRIVATE_KEY_PATH}
+        target: /run/secrets/hermes_ssh_key
+        read_only: true
+      - type: bind
+        source: ${SSH_KNOWN_HOSTS_PATH}
+        target: /run/secrets/known_hosts
+        read_only: true
+      - type: bind
+        source: ${RESTIC_PASSWORD_PATH}
+        target: /run/secrets/restic_password
+        read_only: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=${NAS_UID:-1000},gid=${NAS_GID:-1000}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+
+# A forced OpenSSH command runs with a minimal environment. Use the verified
+# absolute Hermes launcher path rather than relying on PATH.
+HERMES_BIN="${HERMES_BIN:-/home/anton/.local/bin/hermes}"
+[[ -x "$HERMES_BIN" ]] || {
+  printf 'Hermes executable not found: %s\n' "$HERMES_BIN" >&2
+  exit 127
+}
+
+tmpdir="$(mktemp -d /home/anton/.cache/hermes-backup.XXXXXX)"
+cleanup() {
+  rm -rf "$tmpdir"
+}
+trap cleanup EXIT INT TERM
+
+archive="$tmpdir/hermes.zip"
+
+# Keep all status text away from stdout; stdout is exclusively the ZIP stream.
+"$HERMES_BIN" backup --output "$archive" >&2
+[[ -s "$archive" ]] || {
+  printf 'Hermes created no backup data\n' >&2
+  exit 1
+}
+
+cat "$archive"
