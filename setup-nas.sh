@@ -32,6 +32,10 @@ command -v git >/dev/null 2>&1 || fail "git was not found. Install the Synology 
 command -v ssh-keygen >/dev/null 2>&1 || fail "ssh-keygen was not found. Install the Synology Git Server package and reconnect over SSH."
 command -v base64 >/dev/null 2>&1 || fail "base64 is required"
 
+printf '\nAdministrator access is required to create and set ownership on NAS directories,\n'
+printf 'build the Docker image, and run backup containers. sudo may now ask for your DSM password.\n\n'
+sudo -v || fail "sudo authentication failed"
+
 if [[ -f "$env_file" ]]; then
   # shellcheck disable=SC1090
   source "$env_file"
