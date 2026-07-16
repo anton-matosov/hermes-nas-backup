@@ -24,6 +24,7 @@ WORKDIR /
 
 ENV RESTIC_REPOSITORY=/repository \
     RESTIC_PASSWORD_FILE=/run/secrets/restic_password \
+    RESTIC_CACHE_DIR=/tmp/restic-cache \
     SSH_KEY_FILE=/run/secrets/hermes_ssh_key \
     SSH_KNOWN_HOSTS_FILE=/run/secrets/known_hosts \
     RESTIC_HOST=hermes-server \

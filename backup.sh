@@ -24,6 +24,7 @@ require_repository() {
 
 : "${RESTIC_REPOSITORY:=/repository}"
 : "${RESTIC_PASSWORD_FILE:=/run/secrets/restic_password}"
+: "${RESTIC_CACHE_DIR:=/tmp/restic-cache}"
 : "${SSH_KEY_FILE:=/run/secrets/hermes_ssh_key}"
 : "${SSH_KNOWN_HOSTS_FILE:=/run/secrets/known_hosts}"
 : "${SSH_PORT:=22}"
@@ -32,11 +33,12 @@ require_repository() {
 : "${RESTIC_TAG:=hermes}"
 : "${MODE:=backup}"
 
-export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE
+export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE RESTIC_CACHE_DIR
 
 require_file "$RESTIC_PASSWORD_FILE"
 command -v restic >/dev/null || fail "restic is not installed"
 require_repository
+mkdir -p "$RESTIC_CACHE_DIR"
 
 # Prevent overlapping Synology Task Scheduler runs. The lock belongs beside the
 # repository rather than inside Restic's own data structures.

@@ -95,6 +95,36 @@ Restic's `--stdin-from-command` mode checks the SSH command's exit status. If
 SSH or the Ubuntu exporter fails, Restic cancels the backup and creates no
 snapshot.
 
+### SSH rejects the backup key
+
+`Permission denied (publickey,password)` means the Hermes SSH server rejected
+the key before it could run the exporter. Confirm that the public key installed
+for the target user is the one generated on the NAS:
+
+```bash
+# NAS
+ssh-keygen -lf secrets/hermes_ed25519.pub
+
+# Hermes server, logged in as the target user
+ssh-keygen -lf ~/.ssh/authorized_keys
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/authorized_keys
+```
+
+The fingerprints must match, and both `.ssh` and `authorized_keys` must be owned
+by the target user. If they match, inspect the server-side reason immediately
+after another attempt:
+
+```bash
+sudo journalctl -u ssh -n 50 --no-pager
+```
+
+Pay particular attention to an ownership/mode warning or a rejected `from=`
+address. The IP in the generated `from="NAS_SOURCE_IP"` restriction must be the
+source address the Hermes server actually sees. Correct `NAS_SOURCE_IP` in
+`.env`, rerun setup, and replace the old `authorized_keys` line rather than
+adding a second copy.
+
 ## 4. Synology Task Scheduler
 
 Create a scheduled **User-defined script** that runs daily. Use an absolute
