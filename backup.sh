@@ -15,8 +15,16 @@ require_file() {
   [[ -r "$1" ]] || fail "Required file is not readable: $1"
 }
 
+require_repository() {
+  [[ -d "$RESTIC_REPOSITORY" ]] ||
+    fail "Restic repository mount is not a directory: $RESTIC_REPOSITORY"
+  [[ -r "$RESTIC_REPOSITORY" && -w "$RESTIC_REPOSITORY" && -x "$RESTIC_REPOSITORY" ]] ||
+    fail "Restic repository is not accessible (need rwx) as uid=$(id -u) gid=$(id -g): $RESTIC_REPOSITORY. Check NAS_UID/NAS_GID and Synology permissions/ACLs."
+}
+
 : "${RESTIC_REPOSITORY:=/repository}"
 : "${RESTIC_PASSWORD_FILE:=/run/secrets/restic_password}"
+: "${RESTIC_CACHE_DIR:=/tmp/restic-cache}"
 : "${SSH_KEY_FILE:=/run/secrets/hermes_ssh_key}"
 : "${SSH_KNOWN_HOSTS_FILE:=/run/secrets/known_hosts}"
 : "${SSH_PORT:=22}"
@@ -25,15 +33,16 @@ require_file() {
 : "${RESTIC_TAG:=hermes}"
 : "${MODE:=backup}"
 
-export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE
+export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE RESTIC_CACHE_DIR
 
 require_file "$RESTIC_PASSWORD_FILE"
 command -v restic >/dev/null || fail "restic is not installed"
+require_repository
+mkdir -p "$RESTIC_CACHE_DIR"
 
 # Prevent overlapping Synology Task Scheduler runs. The lock belongs beside the
 # repository rather than inside Restic's own data structures.
 if [[ "$RESTIC_REPOSITORY" == /* ]]; then
-  mkdir -p "$RESTIC_REPOSITORY"
   exec 9>"$RESTIC_REPOSITORY/.hermes-backup-run.lock"
   flock -n 9 || fail "Another Hermes backup container is already running"
 fi
@@ -92,7 +101,9 @@ ssh_args=(
   "$HERMES_SSH_TARGET"
 )
 
-archive_name="hermes-$(date -u +'%Y-%m-%dT%H%M%SZ').zip"
+# Snapshot timestamps already identify each run. Keep the path stable so Restic
+# can select parents and apply retention across all backup runs.
+archive_name="hermes-and-mempalace.tar"
 log "Starting streamed Hermes backup from $HERMES_SSH_TARGET"
 
 # --stdin-from-command is deliberate: unlike a shell pipe, Restic observes the
@@ -110,6 +121,9 @@ if [[ "${FORGET_AFTER_BACKUP:-true}" == "true" ]]; then
   keep_args=(
     --host "$RESTIC_HOST"
     --tag "$RESTIC_TAG"
+    # Group independently of the backed-up path so retention also covers older
+    # snapshots created with timestamped stdin filenames.
+    --group-by host,tags
     --keep-daily "${KEEP_DAILY:-7}"
     --keep-weekly "${KEEP_WEEKLY:-5}"
     --keep-monthly "${KEEP_MONTHLY:-12}"

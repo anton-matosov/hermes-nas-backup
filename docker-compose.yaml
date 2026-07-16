@@ -36,7 +36,9 @@ services:
         read_only: true
     read_only: true
     tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=${NAS_UID:-1000},gid=${NAS_GID:-1000}
+      # Restic keeps multiple ~16 MiB pack files here while uploading them.
+      # Leave room for those packs, its cache, and the runtime SSH key.
+      - /tmp:rw,noexec,nosuid,nodev,size=${TMPFS_SIZE:-128m},mode=0700,uid=${NAS_UID:-1000},gid=${NAS_GID:-1000}
     cap_drop:
       - ALL
     security_opt:

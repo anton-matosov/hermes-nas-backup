@@ -2,11 +2,16 @@
 set -Eeuo pipefail
 umask 077
 
-# A forced OpenSSH command runs with a minimal environment. Use the verified
-# absolute Hermes launcher path rather than relying on PATH.
+# A forced OpenSSH command runs with a minimal environment. Use verified
+# absolute paths rather than relying on PATH.
 HERMES_BIN="${HERMES_BIN:-/home/anton/.local/bin/hermes}"
+MEMPALACE_BACKUP="${MEMPALACE_BACKUP:-/home/anton/.local/bin/hermes-backup-mempalace.py}"
 [[ -x "$HERMES_BIN" ]] || {
   printf 'Hermes executable not found: %s\n' "$HERMES_BIN" >&2
+  exit 127
+}
+[[ -x "$MEMPALACE_BACKUP" ]] || {
+  printf 'MemPalace backup helper not found: %s\n' "$MEMPALACE_BACKUP" >&2
   exit 127
 }
 
@@ -16,13 +21,29 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-archive="$tmpdir/hermes.zip"
+mkdir -m 0700 "$tmpdir/hermes"
+hermes_archive="$tmpdir/hermes/hermes.zip"
 
-# Keep all status text away from stdout; stdout is exclusively the ZIP stream.
-"$HERMES_BIN" backup --output "$archive" >&2
-[[ -s "$archive" ]] || {
+# Keep all status text away from stdout; stdout is exclusively the TAR stream.
+"$HERMES_BIN" backup --output "$hermes_archive" >&2
+[[ -s "$hermes_archive" ]] || {
   printf 'Hermes created no backup data\n' >&2
   exit 1
 }
 
-cat "$archive"
+# The helper holds MemPalace's writer lock, snapshots Chroma's SQLite database
+# through SQLite's online backup API, and verifies the copied database.
+"$MEMPALACE_BACKUP" "$tmpdir/mempalace"
+
+cat > "$tmpdir/RESTORE.txt" <<'EOF'
+This TAR bundle contains:
+  hermes/hermes.zip  - restore with: hermes import hermes/hermes.zip
+  mempalace/         - restore to ~/.mempalace after installing MemPalace
+
+Stop Hermes/MemPalace writers before restoring either data directory.
+The MemPalace virtual environment is intentionally excluded and can be reinstalled.
+EOF
+
+# Stream an uncompressed TAR. Restic provides encryption, compression, and
+# deduplication; avoiding an outer ZIP also avoids a second large temporary file.
+tar -C "$tmpdir" -cf - RESTORE.txt hermes mempalace
