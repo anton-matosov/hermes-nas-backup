@@ -137,12 +137,15 @@ adding a second copy.
 
 ## 4. Synology Task Scheduler
 
-Create a scheduled **User-defined script** that runs daily. Use an absolute
-Compose path because Task Scheduler has a minimal working environment:
+Create a scheduled **User-defined script** that runs daily and select `root` in
+the task's **User** field. Scheduled tasks have no terminal, so they cannot
+answer a `sudo` password prompt. Do not put a password in the script or use
+`sudo -S`. Because the task already runs as root, invoke Compose directly using
+its absolute path:
 
 ```bash
 cd /volume1/docker/hermes-backup && \
-  sudo /usr/local/bin/docker-compose run --rm hermes-backup
+  /usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
 The entrypoint uses an advisory lock in the repository and refuses overlapping
@@ -154,17 +157,18 @@ Create a weekly pruning task:
 
 ```bash
 cd /volume1/docker/hermes-backup && \
-  sudo MODE=prune /usr/local/bin/docker-compose run --rm hermes-backup
+  MODE=prune /usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
 Create a weekly 5% repository check:
 
 ```bash
 cd /volume1/docker/hermes-backup && \
-  sudo MODE=check /usr/local/bin/docker-compose run --rm hermes-backup
+  MODE=check /usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
-For an occasional complete data check, override the subset:
+For an occasional complete data check run manually over SSH, override the
+subset:
 
 ```bash
 sudo MODE=check CHECK_READ_DATA_SUBSET=100% \
