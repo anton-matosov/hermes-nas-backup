@@ -15,7 +15,11 @@ RUN apk add --no-cache \
 COPY --chmod=0755 backup.sh /usr/local/bin/hermes-nas-backup
 
 USER backup
-WORKDIR /repository
+# Do not make the bind mount the process working directory. Docker changes to
+# WORKDIR before the entrypoint starts, so a NAS ACL/UID mismatch would otherwise
+# fail with an opaque OCI "chdir ... permission denied" error. The entrypoint
+# validates the repository and reports the actionable path and numeric UID/GID.
+WORKDIR /
 
 ENV RESTIC_REPOSITORY=/repository \
     RESTIC_PASSWORD_FILE=/run/secrets/restic_password \

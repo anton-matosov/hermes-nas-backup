@@ -15,6 +15,13 @@ require_file() {
   [[ -r "$1" ]] || fail "Required file is not readable: $1"
 }
 
+require_repository() {
+  [[ -d "$RESTIC_REPOSITORY" ]] ||
+    fail "Restic repository mount is not a directory: $RESTIC_REPOSITORY"
+  [[ -r "$RESTIC_REPOSITORY" && -w "$RESTIC_REPOSITORY" && -x "$RESTIC_REPOSITORY" ]] ||
+    fail "Restic repository is not accessible (need rwx) as uid=$(id -u) gid=$(id -g): $RESTIC_REPOSITORY. Check NAS_UID/NAS_GID and Synology permissions/ACLs."
+}
+
 : "${RESTIC_REPOSITORY:=/repository}"
 : "${RESTIC_PASSWORD_FILE:=/run/secrets/restic_password}"
 : "${SSH_KEY_FILE:=/run/secrets/hermes_ssh_key}"
@@ -29,11 +36,11 @@ export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE
 
 require_file "$RESTIC_PASSWORD_FILE"
 command -v restic >/dev/null || fail "restic is not installed"
+require_repository
 
 # Prevent overlapping Synology Task Scheduler runs. The lock belongs beside the
 # repository rather than inside Restic's own data structures.
 if [[ "$RESTIC_REPOSITORY" == /* ]]; then
-  mkdir -p "$RESTIC_REPOSITORY"
   exec 9>"$RESTIC_REPOSITORY/.hermes-backup-run.lock"
   flock -n 9 || fail "Another Hermes backup container is already running"
 fi

@@ -19,6 +19,11 @@ fi
 printf 'fake zip stream'
 MOCK_SSH
 
+cat > "$tmp/bin/flock" <<'MOCK_FLOCK'
+#!/usr/bin/env bash
+exit 0
+MOCK_FLOCK
+
 cat > "$tmp/bin/restic" <<'MOCK_RESTIC'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$MOCK_RESTIC_LOG"
@@ -39,7 +44,7 @@ if [[ "$1" == "backup" ]]; then
 fi
 exit 0
 MOCK_RESTIC
-chmod 755 "$tmp/bin/ssh" "$tmp/bin/restic"
+chmod 755 "$tmp/bin/ssh" "$tmp/bin/restic" "$tmp/bin/flock"
 
 export PATH="$tmp/bin:$PATH"
 export MOCK_RESTIC_LOG="$tmp/restic.log"

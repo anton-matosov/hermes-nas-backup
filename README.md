@@ -13,7 +13,7 @@ read-only bind mounts and are not included in the image.
 
 - `Dockerfile` — Alpine, Restic, and OpenSSH client; runs as a non-root user.
 - `backup.sh` — backup/init/check/prune entrypoint.
-- `compose.yaml` — read-only container, tmpfs, dropped capabilities, and mounts.
+- `docker-compose.yaml` — read-only container, tmpfs, dropped capabilities, and mounts.
 - `server/hermes-backup-stream` — forced command installed on Ubuntu.
 
 ## 1. Ubuntu/Hermes server
@@ -49,9 +49,14 @@ account that owns the repository (`id YOUR_DSM_USER` over NAS SSH):
 ```bash
 mkdir -p /volume1/docker/hermes-backup/secrets
 mkdir -p /volume1/Backups/restic-hermes
+chown NAS_UID:NAS_GID /volume1/Backups/restic-hermes
 chmod 700 /volume1/docker/hermes-backup/secrets
 chmod 700 /volume1/Backups/restic-hermes
 ```
+
+In the `chown` command, replace `NAS_UID:NAS_GID` with the numeric values that
+will also be placed in `.env` (for example, `1026:100`). Synology shared-folder
+ACLs must also grant that DSM account read, write, and directory traversal.
 
 Generate a dedicated SSH key on the NAS:
 
@@ -99,11 +104,22 @@ From the project directory on the NAS:
 
 ```bash
 sudo /usr/local/bin/docker-compose build
-MODE=init /usr/local/bin/docker-compose run --rm hermes-backup
+sudo MODE=init /usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
 Older DSM installations may use `docker-compose` instead of `/usr/local/bin/docker-compose`.
 Initialization is run only once.
+
+If an older image reports `chdir to cwd ("/repository") ... permission denied`,
+rebuild it after this change. That failure occurs before the backup script can
+run. The rebuilt image starts in `/` and reports the container's effective UID
+and GID if the repository mount is still inaccessible. Verify that those IDs
+match the repository ownership with:
+
+```bash
+grep '^NAS_\(UID\|GID\)=' .env
+sudo stat -c '%u:%g %a %n' /volume1/Backups/restic-hermes
+```
 
 Test one real backup:
 
@@ -142,14 +158,14 @@ Create a weekly pruning task:
 
 ```bash
 cd /volume1/docker/hermes-backup && \
-  MODE=prune /usr/local/bin//usr/local/bin/docker-compose run --rm hermes-backup
+  MODE=prune /usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
 Create a weekly 5% repository check:
 
 ```bash
 cd /volume1/docker/hermes-backup && \
-  MODE=check /usr/local/bin//usr/local/bin/docker-compose run --rm hermes-backup
+  MODE=check /usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
 For an occasional complete data check, override the subset:
