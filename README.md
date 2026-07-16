@@ -48,9 +48,9 @@ account that owns the repository (`id YOUR_DSM_USER` over NAS SSH):
 
 ```bash
 mkdir -p /volume1/docker/hermes-backup/secrets
-mkdir -p /volume1/backups/restic-hermes
+mkdir -p /volume1/Backups/restic-hermes
 chmod 700 /volume1/docker/hermes-backup/secrets
-chmod 700 /volume1/backups/restic-hermes
+chmod 700 /volume1/Backups/restic-hermes
 ```
 
 Generate a dedicated SSH key on the NAS:
@@ -98,18 +98,18 @@ the SSH key into private tmpfs and forces mode `0600` before invoking OpenSSH.
 From the project directory on the NAS:
 
 ```bash
-docker compose build
-MODE=init docker compose run --rm hermes-backup
+sudo /usr/local/bin/docker-compose build
+MODE=init /usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
-Older DSM installations may use `docker-compose` instead of `docker compose`.
+Older DSM installations may use `docker-compose` instead of `/usr/local/bin/docker-compose`.
 Initialization is run only once.
 
 Test one real backup:
 
 ```bash
-docker compose run --rm hermes-backup
-MODE=snapshots docker compose run --rm hermes-backup
+/usr/local/bin/docker-compose run --rm hermes-backup
+MODE=snapshots /usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
 Restic's `--stdin-from-command` mode checks the SSH command's exit status. If
@@ -123,7 +123,7 @@ Compose path because Task Scheduler has a minimal working environment:
 
 ```bash
 cd /volume1/docker/hermes-backup && \
-  /usr/local/bin/docker compose run --rm hermes-backup
+  /usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
 If DSM exposes Compose as a separate executable, use:
@@ -142,21 +142,21 @@ Create a weekly pruning task:
 
 ```bash
 cd /volume1/docker/hermes-backup && \
-  MODE=prune /usr/local/bin/docker compose run --rm hermes-backup
+  MODE=prune /usr/local/bin//usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
 Create a weekly 5% repository check:
 
 ```bash
 cd /volume1/docker/hermes-backup && \
-  MODE=check /usr/local/bin/docker compose run --rm hermes-backup
+  MODE=check /usr/local/bin//usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
 For an occasional complete data check, override the subset:
 
 ```bash
 MODE=check CHECK_READ_DATA_SUBSET=100% \
-  docker compose run --rm hermes-backup
+  /usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
 ## Operations
@@ -164,7 +164,7 @@ MODE=check CHECK_READ_DATA_SUBSET=100% \
 List snapshots:
 
 ```bash
-MODE=snapshots docker compose run --rm hermes-backup
+MODE=snapshots /usr/local/bin/docker-compose run --rm hermes-backup
 ```
 
 The container supports these modes through `MODE`:
