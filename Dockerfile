@@ -9,8 +9,9 @@ RUN apk add --no-cache \
       openssh-client \
       restic \
       util-linux \
-    && addgroup -g "${BACKUP_GID}" backup \
-    && adduser -D -H -u "${BACKUP_UID}" -G backup backup
+    && group_name="$(awk -F: -v gid="${BACKUP_GID}" '$3 == gid { print $1; exit }' /etc/group)" \
+    && if [ -z "$group_name" ]; then addgroup -g "${BACKUP_GID}" backup; group_name=backup; fi \
+    && adduser -D -H -u "${BACKUP_UID}" -G "$group_name" backup
 
 COPY --chmod=0755 backup.sh /usr/local/bin/hermes-nas-backup
 
