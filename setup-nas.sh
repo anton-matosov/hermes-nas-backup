@@ -43,6 +43,7 @@ fi
 
 NAS_UID="${NAS_UID:-$(id -u)}"
 NAS_GID="${NAS_GID:-$(id -g)}"
+TMPFS_SIZE="${TMPFS_SIZE:-128m}"
 prompt HERMES_SSH_TARGET "Hermes SSH target (user@host)"
 prompt SSH_PORT "Hermes SSH port" "22"
 prompt RESTIC_REPOSITORY_PATH "Restic repository path" "/volume1/Backups/restic-hermes"
@@ -60,6 +61,7 @@ env_tmp="$(mktemp "$project_dir/.env.XXXXXX")"
 cat > "$env_tmp" <<EOF
 NAS_UID=$NAS_UID
 NAS_GID=$NAS_GID
+TMPFS_SIZE=$TMPFS_SIZE
 
 HERMES_SSH_TARGET=$HERMES_SSH_TARGET
 SSH_PORT=$SSH_PORT

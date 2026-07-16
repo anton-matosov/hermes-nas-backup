@@ -95,6 +95,12 @@ Restic's `--stdin-from-command` mode checks the SSH command's exit status. If
 SSH or the Ubuntu exporter fails, Restic cancels the backup and creates no
 snapshot.
 
+Restic stages multiple approximately 16 MiB pack files in `/tmp` before saving
+them to the repository. The container therefore provides a 128 MiB tmpfs by
+default; `TMPFS_SIZE` in `.env` can raise it on larger repositories. Setting it
+near a single pack size can stop input progress when concurrent pack workers
+fill tmpfs.
+
 ### SSH rejects the backup key
 
 `Permission denied (publickey,password)` means the Hermes SSH server rejected
