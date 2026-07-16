@@ -101,7 +101,7 @@ ssh_args=(
   "$HERMES_SSH_TARGET"
 )
 
-archive_name="hermes-$(date -u +'%Y-%m-%dT%H%M%SZ').zip"
+archive_name="hermes-and-mempalace-$(date -u +'%Y-%m-%dT%H%M%SZ').tar"
 log "Starting streamed Hermes backup from $HERMES_SSH_TARGET"
 
 # --stdin-from-command is deliberate: unlike a shell pipe, Restic observes the
