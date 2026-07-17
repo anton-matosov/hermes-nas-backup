@@ -1,5 +1,12 @@
 # Hermes backup pulled by Synology
 
+> **Architecture status:** This repository currently implements the legacy
+> NAS-pull deployment. The proposed production target treats Hermes as a
+> potentially hostile Internet-connected AI agent and is specified in
+> [docs/hostile-source-backup-spec.md](docs/hostile-source-backup-spec.md).
+> The existing implementation should remain only as a temporary fallback until
+> the replacement has passed restore testing.
+
 This is a one-shot, hardened container. Synology Task Scheduler starts it; the
 container connects to the Ubuntu host with a forced-command SSH key, streams a
 SQLite-consistent `hermes backup` archive directly into Restic, applies

@@ -2,6 +2,13 @@
 
 Date: 2026-07-16
 
+Status: Findings remain valid; the target design is superseded by the
+[hostile-source backup architecture specification](hostile-source-backup-spec.md).
+That specification adds the critical assumption that Hermes is an
+Internet-connected AI agent and must be treated as a potentially hostile
+source. Recommendations below that place both pull orchestration and repository
+decryption on the NAS are fallback mitigations, not the preferred architecture.
+
 ## Scope
 
 This document assesses how the Hermes backup system stores and uses its SSH
