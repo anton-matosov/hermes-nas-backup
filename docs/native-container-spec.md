@@ -1,19 +1,10 @@
 # Native Synology container deployment specification
 
-Status: Superseded
+Status: Accepted
 
 Date: 2026-07-16
 
 Related assessment: [Security findings](security-findings.md)
-
-Superseded by: [Hostile-source backup architecture specification](hostile-source-backup-spec.md)
-
-This specification assumed Hermes was a trusted source host. Hermes is an
-Internet-connected AI agent and must instead be treated as a potentially
-hostile tenant. The replacement specification preserves the useful container
-and supply-chain requirements where applicable, but prohibits placing backup
-repository credentials or backup control on Hermes and separates orchestration
-from NAS storage.
 
 ## 1. Purpose
 

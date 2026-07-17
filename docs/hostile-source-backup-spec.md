@@ -1,6 +1,6 @@
 # Hostile-source Hermes backup architecture specification
 
-Status: Proposed
+Status: Rejected
 
 Date: 2026-07-16
 
