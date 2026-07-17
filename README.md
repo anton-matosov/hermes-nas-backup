@@ -1,11 +1,11 @@
 # Hermes backup pulled by Synology
 
-> **Architecture status:** This repository currently implements the legacy
-> NAS-pull deployment. The proposed production target treats Hermes as a
-> potentially hostile Internet-connected AI agent and is specified in
-> [docs/hostile-source-backup-spec.md](docs/hostile-source-backup-spec.md).
-> The existing implementation should remain only as a temporary fallback until
-> the replacement has passed restore testing.
+> **Architecture status:** The accepted production target is the
+> [native Synology container deployment](docs/native-container-spec.md). This
+> repository still implements the legacy Compose-based NAS-pull deployment and
+> must be migrated before it meets that specification. The
+> [hostile-source architecture](docs/hostile-source-backup-spec.md) is retained
+> as a rejected alternative and security reference.
 
 This is a one-shot, hardened container. Synology Task Scheduler starts it; the
 container connects to the Ubuntu host with a forced-command SSH key, streams a
@@ -101,6 +101,14 @@ sudo MODE=snapshots /usr/local/bin/docker-compose run --rm hermes-backup
 Restic's `--stdin-from-command` mode checks the SSH command's exit status. If
 SSH or the Ubuntu exporter fails, Restic cancels the backup and creates no
 snapshot.
+
+The source stream is also bounded without writing a plaintext spool. Defaults
+require at least 10 KiB, allow at most 100 GiB, and terminate backup snapshot
+creation after four hours. Configure `MIN_EXPORT_BYTES`, `MAX_EXPORT_BYTES`, and
+`MAX_BACKUP_SECONDS` from measured successful runs with suitable headroom. SSH
+server-alive probes detect sessions that remain connected but stop responding.
+The Restic shared folder should also have a DSM quota and a capacity alert; the
+quota contains cumulative consumption that a per-run limit cannot.
 
 Every run stores the combined stream as `hermes-and-mempalace.tar`. The stable
 path lets Restic reuse the correct parent snapshot. Retention groups by host and

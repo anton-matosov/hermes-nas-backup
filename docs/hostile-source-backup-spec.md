@@ -1,16 +1,18 @@
 # Hostile-source Hermes backup architecture specification
 
-Status: Rejected
+Status: Rejected in favor of the
+[native Synology container deployment](native-container-spec.md)
 
 Date: 2026-07-16
 
 Related assessment: [Security findings](security-findings.md)
 
-Supersedes: [Native Synology container deployment specification](native-container-spec.md)
+Decision record: This document is a rejected alternative. It does not supersede
+the accepted native-container specification.
 
 ## 1. Purpose
 
-This specification defines the target backup architecture for Hermes when the
+This specification records an alternative backup architecture for Hermes when the
 source is an Internet-connected AI agent and therefore cannot be trusted with
 backup credentials, backup policy, backup scheduling, or network access to
 backup storage.

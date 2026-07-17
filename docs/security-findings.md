@@ -2,12 +2,13 @@
 
 Date: 2026-07-16
 
-Status: Findings remain valid; the target design is superseded by the
-[hostile-source backup architecture specification](hostile-source-backup-spec.md).
-That specification adds the critical assumption that Hermes is an
-Internet-connected AI agent and must be treated as a potentially hostile
-source. Recommendations below that place both pull orchestration and repository
-decryption on the NAS are fallback mitigations, not the preferred architecture.
+Status: Findings remain valid. The accepted target is the
+[native Synology container deployment specification](native-container-spec.md).
+The [hostile-source backup architecture](hostile-source-backup-spec.md) is a
+rejected alternative whose low-complexity controls may still be incorporated
+into the native implementation. Recommendations below that place pull
+orchestration and repository decryption on the NAS therefore apply directly to
+the selected architecture, subject to its documented residual risks.
 
 ## Scope
 

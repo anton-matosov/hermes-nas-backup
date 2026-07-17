@@ -6,6 +6,8 @@ Date: 2026-07-16
 
 Related assessment: [Security findings](security-findings.md)
 
+Rejected alternative: [Hostile-source backup architecture](hostile-source-backup-spec.md)
+
 ## 1. Purpose
 
 This specification defines a replacement for building and running the Hermes
@@ -19,6 +21,10 @@ script is required on the NAS.
 
 The design preserves the existing streamed, encrypted Restic backup workflow and
 the container hardening that can be expressed through native Docker options.
+
+The independent-gateway architecture in the rejected alternative remains useful
+as a record of stronger controls and residual risks, but it is not the selected
+deployment target.
 
 The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** in
 this document describe implementation requirements.
@@ -43,7 +49,9 @@ The implementation MUST:
 8. Create separate containers for daily backup, repository checking, and
    pruning so maintenance containers do not receive the SSH private key.
 9. Preserve non-overlapping execution and propagate failures to DSM monitoring.
-10. Support deliberate image upgrades, credential rotation, rollback, and
+10. Bound source output by total runtime and byte size so a stalled or malicious
+    exporter cannot consume unbounded NAS resources.
+11. Support deliberate image upgrades, credential rotation, rollback, and
     disaster recovery.
 
 The implementation SHOULD:
@@ -82,6 +90,7 @@ The design uses these trust boundaries:
 | Encrypted Synology secret share | Protecting credentials while storage is locked or offline |
 | Fixed container image | Backup implementation and bundled tools |
 | Hermes SSH forced command | Limiting what possession of the SSH key authorizes |
+| Hermes source output | Untrusted input that may be invalid, empty, oversized, or stalled |
 | Restic encryption | Backup confidentiality when its password remains secret |
 | Immutable/off-site storage | Recovery from destructive NAS compromise |
 
@@ -299,6 +308,12 @@ The entrypoint MUST:
 - refuse unreadable required files;
 - preserve strict SSH host-key checking;
 - preserve Restic `--stdin-from-command` failure propagation;
+- enforce configured minimum and maximum source byte counts without writing a
+  plaintext spool to persistent storage;
+- enforce a maximum duration for backup snapshot creation, including the source
+  command and Restic finalization, not only SSH connection establishment;
+- distinguish an oversized stream from a successful stream at exactly the
+  configured maximum and MUST NOT accept silent truncation;
 - retain the repository lock preventing overlapping operations;
 - clean temporary runtime files on normal exit and signals; and
 - return nonzero for every failed backup, check, prune, initialization, or
@@ -363,6 +378,11 @@ KEEP_WEEKLY
 KEEP_MONTHLY
 CHECK_READ_DATA_SUBSET
 SSH_CONNECT_TIMEOUT
+SSH_SERVER_ALIVE_INTERVAL
+SSH_SERVER_ALIVE_COUNT_MAX
+MAX_BACKUP_SECONDS
+MIN_EXPORT_BYTES
+MAX_EXPORT_BYTES
 ```
 
 The following MUST NOT be environment-variable values:
@@ -450,6 +470,12 @@ snapshots SHOULD protect it for at least 7 to 14 days, subject to model support
 and capacity planning. A second encrypted copy MUST exist outside the NAS before
 the system is considered the sole reliable backup of the source data.
 
+The repository shared folder MUST have a deployment-specific quota or another
+tested hard capacity limit. Capacity monitoring SHOULD alert before usable space
+falls below the amount required for one maximum-sized export plus normal Restic
+pack staging and immutable-snapshot growth. The quota is a final containment
+boundary; it does not replace the per-run byte limit.
+
 ### 8.5 Recovery copies
 
 At least two independent recovery copies of the following MUST exist outside
@@ -478,6 +504,12 @@ Environment:
 MODE=backup
 HERMES_SSH_TARGET=user@host
 SSH_PORT=22
+SSH_CONNECT_TIMEOUT=20
+SSH_SERVER_ALIVE_INTERVAL=30
+SSH_SERVER_ALIVE_COUNT_MAX=3
+MAX_BACKUP_SECONDS=14400
+MIN_EXPORT_BYTES=10240
+MAX_EXPORT_BYTES=107374182400
 RESTIC_HOST=hermes-server
 RESTIC_TAG=hermes
 FORGET_AFTER_BACKUP=true
@@ -592,6 +624,12 @@ docker create \
   --env MODE=backup \
   --env HERMES_SSH_TARGET=USER_AT_HOST \
   --env SSH_PORT=22 \
+  --env SSH_CONNECT_TIMEOUT=20 \
+  --env SSH_SERVER_ALIVE_INTERVAL=30 \
+  --env SSH_SERVER_ALIVE_COUNT_MAX=3 \
+  --env MAX_BACKUP_SECONDS=14400 \
+  --env MIN_EXPORT_BYTES=10240 \
+  --env MAX_EXPORT_BYTES=107374182400 \
   --env RESTIC_HOST=hermes-server \
   --env RESTIC_TAG=hermes \
   --env FORGET_AFTER_BACKUP=true \
@@ -674,7 +712,8 @@ inside the image is out of scope for the preferred design.
 The delivered implementation guide MUST perform or direct these steps:
 
 1. Confirm NAS model, DSM version, CPU architecture, Btrfs support, immutable
-   snapshot support, and encrypted-storage options.
+   snapshot support, encrypted-storage options, repository quota support, and
+   expected export size and duration.
 2. Install and update Synology Container Manager.
 3. Confirm UID/GID 65532 are available for this application.
 4. Create the dedicated encrypted secrets share and choose its unlock profile.
@@ -771,6 +810,12 @@ Operators MUST be able to determine:
 - immutable snapshot status; and
 - second-copy status.
 
+Operators MUST be alerted when a run exceeds its duration or byte limit and
+when repository capacity approaches the configured quota. Initial limits MUST
+be replaced with values derived from observed successful exports plus documented
+headroom; raising a limit after an alert requires review rather than automatic
+retry with no bound.
+
 Logs MUST NOT contain:
 
 - the Restic password;
@@ -866,6 +911,12 @@ The implementation is accepted only when all applicable checks pass.
 
 - [ ] A successful manual backup creates a Restic snapshot.
 - [ ] SSH/exporter failure creates no snapshot and returns nonzero.
+- [ ] An empty or undersized source stream creates no snapshot and returns nonzero.
+- [ ] A stream exactly at the configured maximum succeeds.
+- [ ] An oversized source stream is detected rather than silently truncated,
+      creates no snapshot, and returns nonzero.
+- [ ] A source that connects and then stalls is terminated at the whole-run
+      timeout, creates no snapshot, and returns nonzero.
 - [ ] Retention runs only after successful backup.
 - [ ] Overlapping operations are rejected by the repository lock.
 - [ ] Check mode succeeds with the configured subset.
@@ -904,6 +955,9 @@ finalized:
 - encrypted shared-folder versus encrypted-volume support;
 - manual unlock, external Key Manager, or remote-KMIP profile;
 - required `/tmp` size based on observed Restic workload;
+- expected and maximum source export size;
+- maximum complete-backup duration and SSH liveness intervals;
+- repository quota and free-space alert threshold;
 - public versus policy-mandated private GHCR visibility;
 - desired off-site or second-NAS target; and
 - acceptable maintenance and rollback windows.
