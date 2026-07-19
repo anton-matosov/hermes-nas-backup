@@ -51,7 +51,9 @@ The implementation MUST:
 9. Preserve non-overlapping execution and propagate failures to DSM monitoring.
 10. Bound source output by total runtime and byte size so a stalled or malicious
     exporter cannot consume unbounded NAS resources.
-11. Support deliberate image upgrades, credential rotation, rollback, and
+11. Provision the Hermes forced-command exporter and its SSH authorization with
+    an idempotent Ansible playbook from a trusted administrative workstation.
+12. Support deliberate image upgrades, credential rotation, rollback, and
     disaster recovery.
 
 The implementation SHOULD:
@@ -89,7 +91,8 @@ The design uses these trust boundaries:
 | DSM administrators and Docker Engine | Container configuration, mounts, and execution |
 | Encrypted Synology secret share | Protecting credentials while storage is locked or offline |
 | Fixed container image | Backup implementation and bundled tools |
-| Hermes SSH forced command | Limiting what possession of the SSH key authorizes |
+| Ansible controller and privileged Hermes connection | Installing reviewed source-side files and SSH authorization |
+| Root-owned Hermes SSH forced command | Limiting what possession of the SSH key authorizes |
 | Hermes source output | Untrusted input that may be invalid, empty, oversized, or stalled |
 | Restic encryption | Backup confidentiality when its password remains secret |
 | Immutable/off-site storage | Recovery from destructive NAS compromise |
@@ -127,6 +130,11 @@ Encrypted local Restic repository
     |-- immutable Btrfs snapshots
     `-- second NAS or off-site copy
 ```
+
+A trusted administrative workstation runs the repository-supplied Ansible
+playbook against the Hermes host to install the root-owned forced command and
+manage its restricted public-key entries. The NAS private key is never provided
+to Ansible; only its public key is an Ansible input.
 
 ## 6. Image publication
 
@@ -488,6 +496,136 @@ the NAS:
 
 Recovery copies MUST NOT share the same single failure domain as the NAS.
 
+### 8.6 Automated Hermes-host provisioning
+
+Hermes-host setup MUST be performed by a repository-supplied Ansible playbook,
+invoked with an equivalent command from a trusted administrative workstation:
+
+```bash
+ansible-playbook -i INVENTORY ansible/hermes-host.yml
+```
+
+The playbook MUST use Ansible privilege escalation for the narrowly scoped tasks
+that require root. Inventory files MUST NOT contain plaintext login passwords,
+sudo passwords, private SSH keys, or NAS secrets. Operator authentication SHOULD
+use an existing administrative SSH key plus interactive privilege escalation or
+another separately approved Ansible authentication mechanism.
+
+The supported `ansible-core` version range MUST be documented and tested. Any
+non-core collection or role MUST be declared in a requirements file, pinned to
+an exact reviewed version, and unnecessary dependencies SHOULD be avoided. The
+controller MUST verify the Hermes SSH host key rather than enabling host-key
+checking bypasses.
+
+The normal profile MUST run the exporter as the existing Hermes service account
+so it retains the application access already required for a consistent export.
+A dedicated non-interactive export account MAY be used only when its data access
+can be explicitly granted without broad sudo rights, unrelated group membership,
+or access to other application secrets.
+
+The playbook interface MUST define and validate at least:
+
+| Variable | Purpose |
+| --- | --- |
+| `hermes_backup_account` | Existing account under which the forced command runs |
+| `hermes_backup_authorized_keys` | List of public keys and their permitted NAS source IP or CIDR |
+| `hermes_backup_hermes_bin` | Absolute path to the Hermes application executable |
+| `hermes_backup_mempalace_python` | Absolute path to the MemPalace virtual-environment interpreter |
+| `hermes_backup_runtime_parent` | Private temporary-export parent owned by the runtime account |
+| `hermes_backup_state` | `present` for installation or `absent` for managed removal |
+
+The playbook MUST fail before mutation when a required variable is missing, a
+path is not absolute, the runtime account does not exist, an application
+executable is unavailable to that account, a source restriction is malformed,
+or a supplied key is not an accepted public-key type. A public key is not
+confidential, but its authorization options are integrity-sensitive.
+
+The playbook MUST install or verify the ordinary operating-system packages used
+by the exporter, such as Bash and TAR, through the host package manager. It MUST
+NOT install, upgrade, or otherwise take ownership of Hermes or MemPalace; their
+application lifecycle remains separate from backup-protocol deployment.
+
+#### 8.6.1 Installed source-side layout
+
+The initial installed layout MUST be equivalent to:
+
+```text
+/usr/local/libexec/hermes-backup/                 root:root 0755
+/usr/local/libexec/hermes-backup/export           root:root 0755
+/usr/local/libexec/hermes-backup/mempalace-copy   root:root 0755
+RUNTIME_ACCOUNT_HOME/.cache/hermes-backup/        runtime account 0700
+```
+
+The exporter, every protocol helper, and all of their parent directories MUST
+be root-owned and not writable by the Hermes runtime account or unrelated users.
+The playbook MUST install them from the same identified source revision as the
+deployment documentation. Updates MUST be atomic and SHOULD retain the prior
+managed files long enough for rollback.
+
+The forced command MUST:
+
+- use fixed absolute paths for the Hermes executable, MemPalace interpreter,
+  protocol helper, temporary parent, and operating-system tools;
+- not accept environment-variable overrides for executable or helper paths;
+- reject a nonempty `SSH_ORIGINAL_COMMAND`;
+- send diagnostics to stderr and reserve stdout for the TAR stream;
+- create each temporary directory with mode `0700` beneath the managed runtime
+  parent;
+- clean temporary content on normal exit and handled signals; and
+- return nonzero when any application export, consistency check, or TAR stream
+  operation fails.
+
+The Hermes and MemPalace application executables may remain under their normal
+application update mechanism and are not elevated into trusted backup
+components. The root-owned wrapper fixes how they are invoked and prevents the
+runtime account from replacing the backup protocol. It does not make their data
+or output truthful; the NAS-side source bounds remain mandatory.
+
+#### 8.6.2 Managed SSH authorization
+
+For every active NAS public key, the playbook MUST manage an entry equivalent to:
+
+```text
+from="NAS_SOURCE_IP_OR_CIDR",restrict,command="/usr/local/libexec/hermes-backup/export" ssh-ed25519 PUBLIC_KEY synology-hermes-backup
+```
+
+The playbook MUST:
+
+- manage only a clearly marked Hermes-backup block in the account's
+  `authorized_keys`, preserving unrelated administrator keys;
+- set the account's `.ssh` directory to `0700` and `authorized_keys` to `0600`
+  with the correct account ownership;
+- ensure each managed public-key blob occurs exactly once;
+- remove a legacy entry for the same key that invokes an exporter from a
+  user-writable path before accepting the deployment;
+- permit two distinct restricted keys temporarily during rotation; and
+- remove only its managed entries and root-owned exporter files when
+  `hermes_backup_state=absent`, deleting the runtime parent only when it is empty
+  and never deleting Hermes or MemPalace application data.
+
+The public-key restriction is the authorization boundary. The playbook MUST NOT
+grant this key shell, PTY, forwarding, agent forwarding, X11, user-RC, arbitrary
+command, sudo, or unrelated application access.
+
+#### 8.6.3 Idempotence and verification
+
+The playbook MUST support repeatable normal execution and Ansible check mode.
+After a successful application, a second run with unchanged inputs MUST report
+no changes. It MUST verify at least:
+
+1. installed file and parent-directory ownership and modes;
+2. runtime-account execute access to the configured application paths;
+3. runtime-parent ownership, mode, and temporary-file creation;
+4. SSH daemon configuration syntax;
+5. exactly one managed authorization per configured public key;
+6. rejection of a supplied original SSH command without emitting backup data to
+   stdout; and
+7. absence of the legacy user-writable forced-command entry for each managed key.
+
+The playbook MUST NOT run a full export automatically because that could emit
+substantial sensitive data through the Ansible controller. The installation
+procedure performs the end-to-end export only through the NAS backup container.
+
 ## 9. Synology container topology
 
 ### 9.1 Daily container
@@ -723,7 +861,9 @@ The delivered implementation guide MUST perform or direct these steps:
 8. Generate or import the Restic password and SSH key without printing private
    values.
 9. Verify the Hermes SSH host key out of band and install `known_hosts`.
-10. Install the restricted SSH public-key entry on the Hermes server.
+10. Run the Hermes-host Ansible playbook to install and verify the root-owned
+    exporter, protocol helper, runtime directory, and restricted public-key
+    entry.
 11. Pull the public image or authenticate with a least-privilege read-only token
     if private distribution is mandatory.
 12. Verify image provenance and digest.
@@ -776,10 +916,12 @@ Credential rotation MUST be independent of image deployment.
 SSH rotation procedure:
 
 1. create a new key in the encrypted share;
-2. add its restricted public-key entry on the Hermes server;
+2. add its public key to `hermes_backup_authorized_keys` alongside the old key
+   and apply the Hermes-host Ansible playbook;
 3. create or update a candidate daily container to mount the new key;
 4. test a complete backup;
-5. remove the old `authorized_keys` entry; and
+5. remove the old key from `hermes_backup_authorized_keys`, apply the playbook,
+   and verify its authorization is absent; and
 6. securely retire the old private key and update recovery records.
 
 Restic rotation procedure:
@@ -844,16 +986,18 @@ Recommended sequence:
 3. Record the current Restic repository and credential recovery state.
 4. Create the encrypted secret share and root-controlled `known_hosts` location.
 5. Rotate or securely move the Restic password and SSH key.
-6. Apply UID/GID 65532 ownership and verify DSM ACLs.
-7. Pull and verify the release image by digest.
-8. Create the new containers.
-9. Confirm the existing repository is recognized and is not reinitialized.
-10. Run snapshots, check, backup, and representative restore tests.
-11. Create and validate the new scheduled tasks.
-12. Enable immutable snapshots and confirm the second-copy process.
-13. Observe at least one successful scheduled cycle.
-14. Remove the old scheduled tasks.
-15. Remove the NAS Git checkout, Compose project, build cache, and obsolete
+6. Apply the Hermes-host Ansible playbook and verify the old user-writable
+   forced-command entry is absent.
+7. Apply UID/GID 65532 ownership and verify DSM ACLs.
+8. Pull and verify the release image by digest.
+9. Create the new containers.
+10. Confirm the existing repository is recognized and is not reinitialized.
+11. Run snapshots, check, backup, and representative restore tests.
+12. Create and validate the new scheduled tasks.
+13. Enable immutable snapshots and confirm the second-copy process.
+14. Observe at least one successful scheduled cycle.
+15. Remove the old scheduled tasks.
+16. Remove the NAS Git checkout, Compose project, build cache, and obsolete
     secrets only after rollback and recovery requirements are satisfied.
 
 The old SSH public key MUST be removed from the Hermes server if migration
@@ -907,7 +1051,21 @@ The implementation is accepted only when all applicable checks pass.
 - [ ] Restricted SSH public-key options were tested.
 - [ ] Two independent offline recovery copies exist.
 
-### 16.4 Backup behavior
+### 16.4 Hermes host
+
+- [ ] The repository-supplied Ansible playbook completes successfully.
+- [ ] A second playbook run with unchanged inputs reports no changes.
+- [ ] Ansible check mode completes without an unexpected mutation requirement.
+- [ ] Exporter, helper, and relevant parents are root-owned and not writable by
+      the runtime account.
+- [ ] The forced command uses fixed absolute paths and rejects
+      `SSH_ORIGINAL_COMMAND`.
+- [ ] Each managed key has exactly one `from=`, `restrict`, and forced-command
+      authorization.
+- [ ] No managed key retains a legacy authorization to a user-writable exporter.
+- [ ] Shell, PTY, forwarding, user RC, and arbitrary commands are rejected.
+
+### 16.5 Backup behavior
 
 - [ ] A successful manual backup creates a Restic snapshot.
 - [ ] SSH/exporter failure creates no snapshot and returns nonzero.
@@ -938,9 +1096,11 @@ Implementation is incomplete until the repository contains:
 4. Native `docker create` templates for daily, check, prune, init, and snapshot
    modes.
 5. Synology encrypted-share, ACL, UID/GID, and Task Scheduler instructions.
-6. Upgrade, rollback, credential-rotation, and incident-response procedures.
-7. Restore-test instructions.
-8. A migration guide from the existing Compose deployment.
+6. An idempotent Hermes-host Ansible playbook, example inventory, variable
+   reference, check-mode instructions, and managed-removal procedure.
+7. Upgrade, rollback, credential-rotation, and incident-response procedures.
+8. Restore-test instructions.
+9. A migration guide from the existing Compose deployment.
 
 ## 18. Open deployment decisions
 
@@ -958,6 +1118,9 @@ finalized:
 - expected and maximum source export size;
 - maximum complete-backup duration and SSH liveness intervals;
 - repository quota and free-space alert threshold;
+- Hermes runtime account and application executable paths;
+- trusted Ansible controller, inventory ownership, and privilege-escalation
+  method;
 - public versus policy-mandated private GHCR visibility;
 - desired off-site or second-NAS target; and
 - acceptable maintenance and rollback windows.
